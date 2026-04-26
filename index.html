@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Walkathon Check-in System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header with Count -->
+        <div class="header">
+            <h1>Walkathon Check-in</h1>
+            <div class="count-box">
+                <div class="count-label">Checked In</div>
+                <div class="count-number" id="checkedInCount">0</div>
+                <div class="count-label">of <span id="totalCount">0</span></div>
+            </div>
+        </div>
+
+        <!-- Search Section -->
+        <div class="search-section">
+            <input 
+                type="text" 
+                id="searchInput" 
+                placeholder="Search by last name (type first few letters)..."
+                class="search-input"
+                autocomplete="off"
+            >
+            <div class="search-info" id="searchInfo"></div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section">
+            <div id="resultsList" class="results-list"></div>
+            <div id="noResults" class="no-results" style="display: none;">
+                <p>No participants found. Try searching again.</p>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="loading" style="display: none;">
+            <p>Loading data...</p>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+
+        <!-- Setup Instructions (hidden by default) -->
+        <div id="setupInstructions" class="setup-instructions" style="display: none;">
+            <h3>⚙️ Configuration Required</h3>
+            <p>Please configure your Google Sheet connection:</p>
+            <input type="text" id="sheetId" placeholder="Enter Google Sheet ID" class="config-input">
+            <input type="text" id="apiKey" placeholder="Enter Google API Key" class="config-input">
+            <button onclick="saveConfiguration()" class="btn-primary">Save Configuration</button>
+            <p class="setup-hint">Get these from: <a href="https://developers.google.com/sheets/api" target="_blank">Google Sheets API Setup Guide</a></p>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
