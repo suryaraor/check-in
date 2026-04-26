@@ -53,8 +53,16 @@ You should see the code successfully saved.
 2. **Copy the entire URL** from the "Deployment" section
 3. It looks like:
    ```
-   https://script.google.com/macros/s/YOUR_SCRIPT_ID_HERE/usercontent
+   https://script.google.com/macros/s/YOUR_SCRIPT_ID_HERE/exec
    ```
+
+   Deployment ID
+AKfycbyhwIdqNKoconoY2MhM6YJWb6ZSJvBhbLMOlHyQEXet5AocCmwGF9GZOlrsGLpKbKwPLA
+Web app
+URL
+https://script.google.com/macros/s/AKfycbyhwIdqNKoconoY2MhM6YJWb6ZSJvBhbLMOlHyQEXet5AocCmwGF9GZOlrsGLpKbKwPLA/exec
+
+
 4. Save this somewhere safe!
 
 ## ⚙️ Step 6: Configure the Check-in App

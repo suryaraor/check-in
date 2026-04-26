@@ -5,26 +5,50 @@
 function doGet(e) {
   const sheetId = e.parameter.sheetId;
   const action = e.parameter.action;
+  const callback = e.parameter.callback;
   
   try {
+    let result;
     if (action === 'getParticipants') {
-      return ContentService.createTextOutput(JSON.stringify(getParticipants(sheetId)))
-        .setMimeType(ContentService.MimeType.JSON)
-        .setHeader("Access-Control-Allow-Origin", "*");
+      result = getParticipants(sheetId);
     } else if (action === 'checkIn') {
       const participantId = e.parameter.id;
       const checkedIn = e.parameter.checkedIn === 'true';
-      return ContentService.createTextOutput(JSON.stringify(updateCheckIn(sheetId, participantId, checkedIn)))
-        .setMimeType(ContentService.MimeType.JSON)
-        .setHeader("Access-Control-Allow-Origin", "*");
+      result = updateCheckIn(sheetId, participantId, checkedIn);
+    } else {
+      result = { success: false, error: 'Unknown action' };
     }
+
+    if (callback) {
+      return ContentService.createTextOutput(`${callback}(${JSON.stringify(result)})`)
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON)
+      .setHeader("Access-Control-Allow-Origin", "*")
+      .setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+      .setHeader("Access-Control-Allow-Headers", "Content-Type");
+      
   } catch (error) {
+    const errorResult = {
+      success: false,
+      error: error.toString()
+    };
+
+    if (callback) {
+      return ContentService.createTextOutput(`${callback}(${JSON.stringify(errorResult)})`)
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+
     return ContentService.createTextOutput(JSON.stringify({
       success: false,
       error: error.toString()
     }))
     .setMimeType(ContentService.MimeType.JSON)
-    .setHeader("Access-Control-Allow-Origin", "*");
+    .setHeader("Access-Control-Allow-Origin", "*")
+    .setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    .setHeader("Access-Control-Allow-Headers", "Content-Type");
   }
 }
 
@@ -32,22 +56,40 @@ function doGet(e) {
 function doPost(e) {
   const sheetId = e.parameter.sheetId;
   const action = e.parameter.action;
-  const payload = JSON.parse(e.postData.contents);
   
   try {
+    let result;
     if (action === 'checkIn') {
-      return ContentService.createTextOutput(JSON.stringify(updateCheckIn(sheetId, payload.id, payload.checkedIn)))
-        .setMimeType(ContentService.MimeType.JSON)
-        .setHeader("Access-Control-Allow-Origin", "*");
+      const payload = JSON.parse(e.postData.contents);
+      result = updateCheckIn(sheetId, payload.id, payload.checkedIn);
+    } else {
+      result = { success: false, error: 'Unknown action' };
     }
+    
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON)
+      .setHeader("Access-Control-Allow-Origin", "*")
+      .setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+      .setHeader("Access-Control-Allow-Headers", "Content-Type");
+      
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({
       success: false,
       error: error.toString()
     }))
     .setMimeType(ContentService.MimeType.JSON)
-    .setHeader("Access-Control-Allow-Origin", "*");
+    .setHeader("Access-Control-Allow-Origin", "*")
+    .setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    .setHeader("Access-Control-Allow-Headers", "Content-Type");
   }
+}
+
+// Handle OPTIONS requests (preflight)
+function doOptions(e) {
+  return ContentService.createTextOutput('')
+    .setHeader("Access-Control-Allow-Origin", "*")
+    .setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    .setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
 // Get all participants from the sheet

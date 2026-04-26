@@ -1,13 +1,56 @@
 // Configuration
 let CONFIG = {
-    sheetId: localStorage.getItem('walkathon_sheetId') || '',
-    appsScriptUrl: localStorage.getItem('walkathon_appsScriptUrl') || '',
+    sheetId: localStorage.getItem('walkathon_sheetId') || '1hPqe8WZtfOKQqJLzIoS5QwpdFThXCdMrp_ymdhLy5Ms',
+    appsScriptUrl: localStorage.getItem('walkathon_appsScriptUrl') || 'https://script.google.com/macros/s/AKfycbyhwIdqNKoconoY2MhM6YJWb6ZSJvBhbLMOlHyQEXet5AocCmwGF9GZOlrsGLpKbKwPLA/exec',
     range: 'A:F' // ID, FirstName, LastName, (optional columns), CheckInStatus
 };
 
 // Data storage
 let participantsData = [];
 let checkedInIds = new Set();
+let jsonpCounter = 0;
+
+function buildAppsScriptUrl(params) {
+    const query = new URLSearchParams(params).toString();
+    return `${CONFIG.appsScriptUrl}?${query}`;
+}
+
+function jsonpRequest(params) {
+    return new Promise((resolve, reject) => {
+        const callbackName = `walkathonJsonpCb_${Date.now()}_${jsonpCounter++}`;
+        const script = document.createElement('script');
+        const cleanup = () => {
+            delete window[callbackName];
+            if (script.parentNode) {
+                script.parentNode.removeChild(script);
+            }
+        };
+
+        const timeoutId = setTimeout(() => {
+            cleanup();
+            reject(new Error('Request timed out'));
+        }, 15000);
+
+        window[callbackName] = (data) => {
+            clearTimeout(timeoutId);
+            cleanup();
+            resolve(data);
+        };
+
+        script.onerror = () => {
+            clearTimeout(timeoutId);
+            cleanup();
+            reject(new Error('Unable to reach Apps Script endpoint'));
+        };
+
+        script.src = buildAppsScriptUrl({
+            ...params,
+            callback: callbackName
+        });
+
+        document.body.appendChild(script);
+    });
+}
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -44,15 +87,11 @@ async function initializeApp() {
 
 // Load data from Apps Script
 async function loadParticipantsData() {
-    const url = `${CONFIG.appsScriptUrl}?sheetId=${CONFIG.sheetId}&action=getParticipants`;
-
     try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`HTTP Error: ${response.status}`);
-        }
-
-        const data = await response.json();
+        const data = await jsonpRequest({
+            sheetId: CONFIG.sheetId,
+            action: 'getParticipants'
+        });
 
         if (!data.success) {
             throw new Error(data.error || 'Failed to load data');
@@ -282,15 +321,14 @@ async function undoCheckIn(participant) {
 
 // Update check-in status via Apps Script
 async function updateCheckInStatus(participantId, checkedIn) {
-    const url = `${CONFIG.appsScriptUrl}?sheetId=${CONFIG.sheetId}&action=checkIn&id=${encodeURIComponent(participantId)}&checkedIn=${checkedIn}`;
-
     try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`HTTP Error: ${response.status}`);
-        }
+        const data = await jsonpRequest({
+            sheetId: CONFIG.sheetId,
+            action: 'checkIn',
+            id: participantId,
+            checkedIn: checkedIn ? 'true' : 'false'
+        });
 
-        const data = await response.json();
         if (!data.success) {
             throw new Error(data.error || 'Update failed');
         }
@@ -319,9 +357,9 @@ function showSetupInstructions() {
         <h3>⚙️ Configuration Required</h3>
         <p>Please configure your Google Sheet connection:</p>
         <label for="sheetId"><strong>Google Sheet ID:</strong></label>
-        <input type="text" id="sheetId" placeholder="e.g., 1abc123xyz456def" class="config-input">
+        <input type="text" id="sheetId" value="${CONFIG.sheetId}" placeholder="e.g., 1abc123xyz456def" class="config-input">
         <label for="appsScriptUrl"><strong>Apps Script URL:</strong></label>
-        <input type="text" id="appsScriptUrl" placeholder="https://script.google.com/macros/s/..." class="config-input">
+        <input type="text" id="appsScriptUrl" value="${CONFIG.appsScriptUrl}" placeholder="https://script.google.com/macros/s/.../exec" class="config-input">
         <button onclick="saveConfiguration()" class="btn-primary" style="width: 100%; margin-top: 10px;">Save Configuration</button>
         <p class="setup-hint" style="margin-top: 15px;">📖 <a href="#" onclick="showSetupGuide(); return false;">Click here for setup instructions</a></p>
     `;
@@ -379,7 +417,7 @@ DONE! ✅ You're ready to check people in!
 
 ⚠️ Important Notes:
 - The Apps Script URL looks like:
-  https://script.google.com/macros/s/YOUR_ID_HERE/usercontent
+    https://script.google.com/macros/s/YOUR_ID_HERE/exec
 - Keep the deployment URL in a safe place
 - You can redeploy at any time if needed
     `;
