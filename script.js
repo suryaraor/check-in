@@ -255,7 +255,7 @@ async function checkInParticipant(participant) {
     }
 
     try {
-        await updateCheckInStatus(participant.id, true);
+        await updateCheckInStatus(participant.id, true, participant.rowIndex);
         checkedInIds.add(participant.id);
         updateCheckInCount();
         
@@ -281,7 +281,7 @@ async function checkInMultiple(members, checkboxStates, membersContainer) {
     try {
         // Update all in parallel
         await Promise.all(selectedMembers.map(member => 
-            updateCheckInStatus(member.id, true)
+            updateCheckInStatus(member.id, true, member.rowIndex)
         ));
 
         // Add to checked-in set
@@ -306,7 +306,7 @@ async function checkInMultiple(members, checkboxStates, membersContainer) {
 // Undo check-in
 async function undoCheckIn(participant) {
     try {
-        await updateCheckInStatus(participant.id, false);
+        await updateCheckInStatus(participant.id, false, participant.rowIndex);
         checkedInIds.delete(participant.id);
         updateCheckInCount();
 
@@ -320,12 +320,13 @@ async function undoCheckIn(participant) {
 }
 
 // Update check-in status via Apps Script
-async function updateCheckInStatus(participantId, checkedIn) {
+async function updateCheckInStatus(participantId, checkedIn, rowIndex) {
     try {
         const data = await jsonpRequest({
             sheetId: CONFIG.sheetId,
             action: 'checkIn',
             id: participantId,
+            rowIndex: rowIndex,
             checkedIn: checkedIn ? 'true' : 'false'
         });
 

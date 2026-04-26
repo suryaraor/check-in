@@ -6,15 +6,17 @@ function doGet(e) {
   const sheetId = e.parameter.sheetId;
   const action = e.parameter.action;
   const callback = e.parameter.callback;
+  const sheetName = e.parameter.sheetName;
   
   try {
     let result;
     if (action === 'getParticipants') {
-      result = getParticipants(sheetId);
+      result = getParticipants(sheetId, sheetName);
     } else if (action === 'checkIn') {
       const participantId = e.parameter.id;
+      const rowIndex = e.parameter.rowIndex ? Number(e.parameter.rowIndex) : null;
       const checkedIn = e.parameter.checkedIn === 'true';
-      result = updateCheckIn(sheetId, participantId, checkedIn);
+      result = updateCheckIn(sheetId, participantId, checkedIn, sheetName, rowIndex);
     } else {
       result = { success: false, error: 'Unknown action' };
     }
@@ -56,12 +58,13 @@ function doGet(e) {
 function doPost(e) {
   const sheetId = e.parameter.sheetId;
   const action = e.parameter.action;
+  const sheetName = e.parameter.sheetName;
   
   try {
     let result;
     if (action === 'checkIn') {
       const payload = JSON.parse(e.postData.contents);
-      result = updateCheckIn(sheetId, payload.id, payload.checkedIn);
+      result = updateCheckIn(sheetId, payload.id, payload.checkedIn, sheetName, payload.rowIndex);
     } else {
       result = { success: false, error: 'Unknown action' };
     }
@@ -93,10 +96,10 @@ function doOptions(e) {
 }
 
 // Get all participants from the sheet
-function getParticipants(sheetId) {
+function getParticipants(sheetId, sheetName) {
   try {
     const spreadsheet = SpreadsheetApp.openById(sheetId);
-    const sheet = spreadsheet.getActiveSheet();
+    const sheet = getTargetSheet(spreadsheet, sheetName);
     const data = sheet.getDataRange().getValues();
     
     if (data.length === 0) {
@@ -109,7 +112,7 @@ function getParticipants(sheetId) {
     const idIndex = headers.findIndex(h => String(h).toLowerCase().includes('id'));
     const firstNameIndex = headers.findIndex(h => String(h).toLowerCase().includes('first'));
     const lastNameIndex = headers.findIndex(h => String(h).toLowerCase().includes('last'));
-    const checkInIndex = headers.length - 1; // Last column
+    const checkInIndex = findCheckInColumnIndex(headers);
     
     if (idIndex === -1 || firstNameIndex === -1 || lastNameIndex === -1) {
       return { 
@@ -152,10 +155,10 @@ function getParticipants(sheetId) {
 }
 
 // Update check-in status
-function updateCheckIn(sheetId, participantId, checkedIn) {
+function updateCheckIn(sheetId, participantId, checkedIn, sheetName, rowIndexFromClient) {
   try {
     const spreadsheet = SpreadsheetApp.openById(sheetId);
-    const sheet = spreadsheet.getActiveSheet();
+    const sheet = getTargetSheet(spreadsheet, sheetName);
     const data = sheet.getDataRange().getValues();
     
     if (data.length === 0) {
@@ -163,24 +166,35 @@ function updateCheckIn(sheetId, participantId, checkedIn) {
     }
     
     const headers = data[0];
+    const checkInIndex = findCheckInColumnIndex(headers);
     const idIndex = headers.findIndex(h => String(h).toLowerCase().includes('id'));
-    const checkInIndex = headers.length - 1;
+    let actualRow = -1;
     
-    // Find the participant row
-    let rowIndex = -1;
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][idIndex]).trim() === String(participantId).trim()) {
-        rowIndex = i;
-        break;
+    // Prefer exact row updates from client to avoid ID ambiguity.
+    if (Number.isFinite(rowIndexFromClient) && rowIndexFromClient >= 2 && rowIndexFromClient <= data.length) {
+      actualRow = rowIndexFromClient;
+    } else {
+      // Fallback to ID match for backward compatibility.
+      if (idIndex === -1) {
+        return { success: false, error: 'ID column not found and row index missing' };
       }
+
+      let rowIndex = -1;
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][idIndex]).trim() === String(participantId).trim()) {
+          rowIndex = i;
+          break;
+        }
+      }
+
+      if (rowIndex === -1) {
+        return { success: false, error: 'Participant not found' };
+      }
+
+      actualRow = rowIndex + 1;
     }
-    
-    if (rowIndex === -1) {
-      return { success: false, error: 'Participant not found' };
-    }
-    
-    // Update the check-in column (use actual Google Sheets row index)
-    const actualRow = rowIndex + 1; // +1 because rowIndex is 0-based from data[1]
+
+    // Update the check-in column (1-based index for Sheets API)
     const checkInColumn = checkInIndex + 1; // +1 because column indices are 1-based in Sheets
     
     const range = sheet.getRange(actualRow, checkInColumn);
@@ -188,7 +202,9 @@ function updateCheckIn(sheetId, participantId, checkedIn) {
     
     return {
       success: true,
-      message: `Check-in updated for participant ${participantId}`
+      message: `Check-in updated for participant ${participantId}`,
+      sheetName: sheet.getName(),
+      updatedColumn: checkInColumn
     };
     
   } catch (error) {
@@ -197,6 +213,47 @@ function updateCheckIn(sheetId, participantId, checkedIn) {
       error: error.toString()
     };
   }
+}
+
+function getTargetSheet(spreadsheet, sheetName) {
+  if (sheetName) {
+    const namedSheet = spreadsheet.getSheetByName(sheetName);
+    if (!namedSheet) {
+      throw new Error(`Sheet '${sheetName}' not found`);
+    }
+    return namedSheet;
+  }
+
+  const sheets = spreadsheet.getSheets();
+  if (!sheets || sheets.length === 0) {
+    throw new Error('No sheets found in spreadsheet');
+  }
+
+  // Use the first tab for deterministic behavior in web app execution.
+  return sheets[0];
+}
+
+function findCheckInColumnIndex(headers) {
+  const headerNames = headers.map(h => String(h || '').toLowerCase().trim());
+
+  // Prefer explicit check-in/status header names.
+  let idx = headerNames.findIndex(h => h.includes('check') && h.includes('in'));
+  if (idx !== -1) {
+    return idx;
+  }
+
+  idx = headerNames.findIndex(h => h.includes('checked in'));
+  if (idx !== -1) {
+    return idx;
+  }
+
+  idx = headerNames.findIndex(h => h === 'status' || h.includes('checkin'));
+  if (idx !== -1) {
+    return idx;
+  }
+
+  // Backward compatibility fallback: assume last column.
+  return headers.length - 1;
 }
 
 // Test function (optional - for debugging)
