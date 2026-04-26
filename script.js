@@ -1,112 +1,18 @@
 // Configuration
 let CONFIG = {
     sheetId: localStorage.getItem('walkathon_sheetId') || '',
-    clientId: '694282389867-ukt0fkcslk67s3kmlk1ssfus2l1n1upb.apps.googleusercontent.com',
-    scopes: 'https://www.googleapis.com/auth/spreadsheets',
+    appsScriptUrl: localStorage.getItem('walkathon_appsScriptUrl') || '',
     range: 'A:F' // ID, FirstName, LastName, (optional columns), CheckInStatus
 };
 
 // Data storage
 let participantsData = [];
 let checkedInIds = new Set();
-let authToken = localStorage.getItem('walkathon_authToken') || '';
 
-// Initialize Google API
-window.addEventListener('load', () => {
-    gapi.load('client:auth2', initializeApp);
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+    initializeApp();
 });
-
-// Initialize app
-async function initializeApp() {
-    try {
-        await gapi.client.init({
-            clientId: CONFIG.clientId,
-            scope: CONFIG.scopes
-        });
-
-        const auth2 = gapi.auth2.getAuthInstance();
-        if (auth2.isSignedIn.get()) {
-            authToken = auth2.currentUser.get().getAuthResponse().id_token;
-            localStorage.setItem('walkathon_authToken', authToken);
-            loadApp();
-        } else {
-            showSignIn();
-        }
-    } catch (error) {
-        showError('Failed to initialize: ' + error.message);
-    }
-}
-
-// Show sign-in button
-function showSignIn() {
-    document.getElementById('setupInstructions').innerHTML = `
-        <h3>📋 Sign In Required</h3>
-        <p>Please sign in with your Google account to access the check-in system.</p>
-        <div id="g_id_onload"
-             data-client_id="${CONFIG.clientId}"
-             data-callback="onSignIn">
-        </div>
-        <div class="g_id_signin" data-type="standard"></div>
-    `;
-    document.getElementById('setupInstructions').style.display = 'block';
-    
-    // Load Google Sign-In library
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    document.head.appendChild(script);
-}
-
-// Called after sign-in
-function onSignIn(response) {
-    authToken = response.credential;
-    localStorage.setItem('walkathon_authToken', authToken);
-    document.getElementById('setupInstructions').style.display = 'none';
-    askForSheetId();
-}
-
-// Ask for Sheet ID
-function askForSheetId() {
-    if (CONFIG.sheetId) {
-        loadApp();
-        return;
-    }
-    
-    document.getElementById('setupInstructions').innerHTML = `
-        <h3>🔑 Enter Sheet ID</h3>
-        <p>Paste your Google Sheet ID:</p>
-        <input type="text" id="sheetIdInput" placeholder="e.g., 1abc123xyz456def" class="config-input">
-        <button onclick="saveSheetId()" class="btn-primary" style="width: 100%; margin-top: 10px;">Continue</button>
-        <p class="setup-hint">Find it in your Sheet URL: docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit</p>
-    `;
-    document.getElementById('setupInstructions').style.display = 'block';
-}
-
-// Save sheet ID
-function saveSheetId() {
-    const sheetId = document.getElementById('sheetIdInput').value.trim();
-    if (!sheetId) {
-        showError('Please enter a Sheet ID');
-        return;
-    }
-    CONFIG.sheetId = sheetId;
-    localStorage.setItem('walkathon_sheetId', sheetId);
-    document.getElementById('setupInstructions').style.display = 'none';
-    loadApp();
-}
-
-// Load the app with data
-async function loadApp() {
-    showLoading(true);
-    try {
-        await loadParticipantsData();
-        showLoading(false);
-    } catch (error) {
-        showError(`Failed to load data: ${error.message}`);
-        showLoading(false);
-    }
-}
 
 // Search input listener
 document.getElementById('searchInput').addEventListener('input', (e) => {
@@ -118,46 +24,41 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
     }
 });
 
-// Load data from Google Sheet
+// Initialize app
+async function initializeApp() {
+    if (!CONFIG.sheetId || !CONFIG.appsScriptUrl) {
+        showSetupInstructions();
+        return;
+    }
+
+    showLoading(true);
+    try {
+        await loadParticipantsData();
+        showLoading(false);
+    } catch (error) {
+        showError(`Failed to load data: ${error.message}`);
+        showLoading(false);
+        showSetupInstructions();
+    }
+}
+
+// Load data from Apps Script
 async function loadParticipantsData() {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.range}`;
+    const url = `${CONFIG.appsScriptUrl}?sheetId=${CONFIG.sheetId}&action=getParticipants`;
 
     try {
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
+        const response = await fetch(url);
         if (!response.ok) {
-            throw new Error(`API Error: ${response.status}`);
+            throw new Error(`HTTP Error: ${response.status}`);
         }
 
         const data = await response.json();
-        const rows = data.values || [];
 
-        if (rows.length === 0) {
-            throw new Error('No data found in spreadsheet');
+        if (!data.success) {
+            throw new Error(data.error || 'Failed to load data');
         }
 
-        // Parse header
-        const headers = rows[0];
-        const idIndex = headers.findIndex(h => h.toLowerCase().includes('id'));
-        const firstNameIndex = headers.findIndex(h => h.toLowerCase().includes('first'));
-        const lastNameIndex = headers.findIndex(h => h.toLowerCase().includes('last'));
-        const checkInIndex = headers.length - 1; // Last column is check-in status
-
-        if (idIndex === -1 || firstNameIndex === -1 || lastNameIndex === -1) {
-            throw new Error('Missing required columns: ID, First Name, Last Name');
-        }
-
-        // Parse data rows
-        participantsData = rows.slice(1).map((row, index) => ({
-            rowIndex: index + 2, // Google Sheets 1-indexed
-            id: row[idIndex]?.trim() || `${index}`,
-            firstName: row[firstNameIndex]?.trim() || '',
-            lastName: row[lastNameIndex]?.trim() || '',
-            checkedIn: row[checkInIndex]?.toLowerCase() === 'yes' || row[checkInIndex]?.toLowerCase() === 'true'
-        })).filter(p => p.firstName || p.lastName); // Filter out empty rows
+        participantsData = data.data || [];
 
         // Load checked-in status
         participantsData.forEach(p => {
@@ -379,34 +280,22 @@ async function undoCheckIn(participant) {
     }
 }
 
-// Update check-in status in Google Sheet
+// Update check-in status via Apps Script
 async function updateCheckInStatus(participantId, checkedIn) {
-    const participant = participantsData.find(p => p.id === participantId);
-    if (!participant) {
-        throw new Error('Participant not found');
-    }
-
-    const values = [[checkedIn ? 'Yes' : 'No']];
-    const range = `F${participant.rowIndex}`;
-
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${range}?valueInputOption=USER_ENTERED`;
+    const url = `${CONFIG.appsScriptUrl}?sheetId=${CONFIG.sheetId}&action=checkIn&id=${encodeURIComponent(participantId)}&checkedIn=${checkedIn}`;
 
     try {
-        const response = await fetch(url, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ values })
-        });
-
+        const response = await fetch(url);
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error?.message || `Update failed: ${response.status}`);
+            throw new Error(`HTTP Error: ${response.status}`);
         }
 
-        return await response.json();
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.error || 'Update failed');
+        }
+
+        return data;
     } catch (error) {
         throw error;
     }
@@ -423,6 +312,79 @@ function clearResults() {
     document.getElementById('resultsList').innerHTML = '';
     document.getElementById('noResults').style.display = 'none';
     document.getElementById('searchInfo').textContent = '';
+}
+
+function showSetupInstructions() {
+    document.getElementById('setupInstructions').innerHTML = `
+        <h3>⚙️ Configuration Required</h3>
+        <p>Please configure your Google Sheet connection:</p>
+        <label for="sheetId"><strong>Google Sheet ID:</strong></label>
+        <input type="text" id="sheetId" placeholder="e.g., 1abc123xyz456def" class="config-input">
+        <label for="appsScriptUrl"><strong>Apps Script URL:</strong></label>
+        <input type="text" id="appsScriptUrl" placeholder="https://script.google.com/macros/s/..." class="config-input">
+        <button onclick="saveConfiguration()" class="btn-primary" style="width: 100%; margin-top: 10px;">Save Configuration</button>
+        <p class="setup-hint" style="margin-top: 15px;">📖 <a href="#" onclick="showSetupGuide(); return false;">Click here for setup instructions</a></p>
+    `;
+    document.getElementById('setupInstructions').style.display = 'block';
+}
+
+function saveConfiguration() {
+    const sheetId = document.getElementById('sheetId').value.trim();
+    const appsScriptUrl = document.getElementById('appsScriptUrl').value.trim();
+
+    if (!sheetId || !appsScriptUrl) {
+        showError('Please fill in both Sheet ID and Apps Script URL');
+        return;
+    }
+
+    CONFIG.sheetId = sheetId;
+    CONFIG.appsScriptUrl = appsScriptUrl;
+
+    localStorage.setItem('walkathon_sheetId', sheetId);
+    localStorage.setItem('walkathon_appsScriptUrl', appsScriptUrl);
+
+    document.getElementById('setupInstructions').style.display = 'none';
+    initializeApp();
+}
+
+function showSetupGuide() {
+    const guide = `
+📋 SETUP GUIDE - Google Apps Script Backend
+
+STEP 1: Get Apps Script Code
+- Open this file: apps-script.js
+- Copy all the code
+
+STEP 2: Create Google Apps Script
+- Open your Google Sheet: https://docs.google.com/spreadsheets/d/1hPqe8WZtfOKQqJLzIoS5QwpdFThXCdMrp_ymdhLy5Ms/
+- Click: Extensions > Apps Script
+- Delete any existing code
+- Paste the code from apps-script.js
+- Save the project (Ctrl+S)
+
+STEP 3: Deploy as Web App
+- Click: "Deploy" > "New Deployment"
+- Select: Type = "Web app"
+- Set: Execute as = Your Account
+- Set: Who has access = "Anyone"
+- Click: "Deploy"
+- Copy the deployment URL shown
+
+STEP 4: Configure Check-in App
+- Sheet ID: 1hPqe8WZtfOKQqJLzIoS5QwpdFThXCdMrp_ymdhLy5Ms
+- Apps Script URL: Paste the deployment URL
+- Click: "Save Configuration"
+
+DONE! ✅ You're ready to check people in!
+
+⚠️ Important Notes:
+- The Apps Script URL looks like:
+  https://script.google.com/macros/s/YOUR_ID_HERE/usercontent
+- Keep the deployment URL in a safe place
+- You can redeploy at any time if needed
+    `;
+    
+    alert(guide);
 }
 
 // UI Helpers
