@@ -15,6 +15,10 @@ function buildAppsScriptUrl(params) {
     return `${CONFIG.appsScriptUrl}?${query}`;
 }
 
+function normalizeText(value) {
+    return String(value || '').toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
 function jsonpRequest(params) {
     return new Promise((resolve, reject) => {
         const callbackName = `walkathonJsonpCb_${Date.now()}_${jsonpCounter++}`;
@@ -99,6 +103,10 @@ async function loadParticipantsData() {
 
         participantsData = data.data || [];
 
+        if (participantsData.length === 0) {
+            showError('No participants were loaded. Check your sheet data and header names (ID, First Name, Last Name).');
+        }
+
         // Load checked-in status
         participantsData.forEach(p => {
             if (p.checkedIn) {
@@ -115,10 +123,17 @@ async function loadParticipantsData() {
 
 // Perform search
 function performSearch(searchTerm) {
+    const normalizedSearch = normalizeText(searchTerm);
     const matches = participantsData.filter(p => {
-        const firstName = (p.firstName || '').toLowerCase();
-        const lastName = (p.lastName || '').toLowerCase();
-        return firstName.startsWith(searchTerm) || lastName.startsWith(searchTerm);
+        const firstName = normalizeText(p.firstName);
+        const lastName = normalizeText(p.lastName);
+        const fullName = `${firstName} ${lastName}`.trim();
+        const id = normalizeText(p.id);
+
+        return firstName.includes(normalizedSearch)
+            || lastName.includes(normalizedSearch)
+            || fullName.includes(normalizedSearch)
+            || id.includes(normalizedSearch);
     });
 
     if (matches.length === 0) {
