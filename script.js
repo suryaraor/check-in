@@ -1,18 +1,112 @@
 // Configuration
 let CONFIG = {
     sheetId: localStorage.getItem('walkathon_sheetId') || '',
-    apiKey: localStorage.getItem('walkathon_apiKey') || '',
+    clientId: '694282389867-ukt0fkcslk67s3kmlk1ssfus2l1n1upb.apps.googleusercontent.com',
+    scopes: 'https://www.googleapis.com/auth/spreadsheets',
     range: 'A:F' // ID, FirstName, LastName, (optional columns), CheckInStatus
 };
 
 // Data storage
 let participantsData = [];
 let checkedInIds = new Set();
+let authToken = localStorage.getItem('walkathon_authToken') || '';
 
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', () => {
-    initializeApp();
+// Initialize Google API
+window.addEventListener('load', () => {
+    gapi.load('client:auth2', initializeApp);
 });
+
+// Initialize app
+async function initializeApp() {
+    try {
+        await gapi.client.init({
+            clientId: CONFIG.clientId,
+            scope: CONFIG.scopes
+        });
+
+        const auth2 = gapi.auth2.getAuthInstance();
+        if (auth2.isSignedIn.get()) {
+            authToken = auth2.currentUser.get().getAuthResponse().id_token;
+            localStorage.setItem('walkathon_authToken', authToken);
+            loadApp();
+        } else {
+            showSignIn();
+        }
+    } catch (error) {
+        showError('Failed to initialize: ' + error.message);
+    }
+}
+
+// Show sign-in button
+function showSignIn() {
+    document.getElementById('setupInstructions').innerHTML = `
+        <h3>📋 Sign In Required</h3>
+        <p>Please sign in with your Google account to access the check-in system.</p>
+        <div id="g_id_onload"
+             data-client_id="${CONFIG.clientId}"
+             data-callback="onSignIn">
+        </div>
+        <div class="g_id_signin" data-type="standard"></div>
+    `;
+    document.getElementById('setupInstructions').style.display = 'block';
+    
+    // Load Google Sign-In library
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+}
+
+// Called after sign-in
+function onSignIn(response) {
+    authToken = response.credential;
+    localStorage.setItem('walkathon_authToken', authToken);
+    document.getElementById('setupInstructions').style.display = 'none';
+    askForSheetId();
+}
+
+// Ask for Sheet ID
+function askForSheetId() {
+    if (CONFIG.sheetId) {
+        loadApp();
+        return;
+    }
+    
+    document.getElementById('setupInstructions').innerHTML = `
+        <h3>🔑 Enter Sheet ID</h3>
+        <p>Paste your Google Sheet ID:</p>
+        <input type="text" id="sheetIdInput" placeholder="e.g., 1abc123xyz456def" class="config-input">
+        <button onclick="saveSheetId()" class="btn-primary" style="width: 100%; margin-top: 10px;">Continue</button>
+        <p class="setup-hint">Find it in your Sheet URL: docs.google.com/spreadsheets/d/<strong>SHEET_ID</strong>/edit</p>
+    `;
+    document.getElementById('setupInstructions').style.display = 'block';
+}
+
+// Save sheet ID
+function saveSheetId() {
+    const sheetId = document.getElementById('sheetIdInput').value.trim();
+    if (!sheetId) {
+        showError('Please enter a Sheet ID');
+        return;
+    }
+    CONFIG.sheetId = sheetId;
+    localStorage.setItem('walkathon_sheetId', sheetId);
+    document.getElementById('setupInstructions').style.display = 'none';
+    loadApp();
+}
+
+// Load the app with data
+async function loadApp() {
+    showLoading(true);
+    try {
+        await loadParticipantsData();
+        showLoading(false);
+    } catch (error) {
+        showError(`Failed to load data: ${error.message}`);
+        showLoading(false);
+    }
+}
 
 // Search input listener
 document.getElementById('searchInput').addEventListener('input', (e) => {
@@ -24,30 +118,16 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
     }
 });
 
-// Initialize app
-async function initializeApp() {
-    if (!CONFIG.sheetId || !CONFIG.apiKey) {
-        showSetupInstructions();
-        return;
-    }
-
-    showLoading(true);
-    try {
-        await loadParticipantsData();
-        showLoading(false);
-    } catch (error) {
-        showError(`Failed to load data: ${error.message}`);
-        showLoading(false);
-        showSetupInstructions();
-    }
-}
-
 // Load data from Google Sheet
 async function loadParticipantsData() {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.range}?key=${CONFIG.apiKey}`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${CONFIG.sheetId}/values/${CONFIG.range}`;
 
     try {
-        const response = await fetch(url);
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
         if (!response.ok) {
             throw new Error(`API Error: ${response.status}`);
         }
@@ -316,7 +396,7 @@ async function updateCheckInStatus(participantId, checkedIn) {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
-                'X-Goog-Api-Key': CONFIG.apiKey
+                'Authorization': `Bearer ${authToken}`
             },
             body: JSON.stringify({ values })
         });
@@ -362,27 +442,4 @@ function showError(message) {
     setTimeout(() => {
         errorElement.style.display = 'none';
     }, 5000);
-}
-
-function showSetupInstructions() {
-    document.getElementById('setupInstructions').style.display = 'block';
-}
-
-function saveConfiguration() {
-    const sheetId = document.getElementById('sheetId').value.trim();
-    const apiKey = document.getElementById('apiKey').value.trim();
-
-    if (!sheetId || !apiKey) {
-        showError('Please fill in both Sheet ID and API Key');
-        return;
-    }
-
-    CONFIG.sheetId = sheetId;
-    CONFIG.apiKey = apiKey;
-
-    localStorage.setItem('walkathon_sheetId', sheetId);
-    localStorage.setItem('walkathon_apiKey', apiKey);
-
-    document.getElementById('setupInstructions').style.display = 'none';
-    initializeApp();
 }

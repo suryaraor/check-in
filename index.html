@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Walkathon Check-in System</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://apis.google.com/js/client.js"></script>
 </head>
 <body>
     <div class="container">
@@ -48,12 +49,6 @@
 
         <!-- Setup Instructions (hidden by default) -->
         <div id="setupInstructions" class="setup-instructions" style="display: none;">
-            <h3>⚙️ Configuration Required</h3>
-            <p>Please configure your Google Sheet connection:</p>
-            <input type="text" id="sheetId" placeholder="Enter Google Sheet ID" class="config-input">
-            <input type="text" id="apiKey" placeholder="Enter Google API Key" class="config-input">
-            <button onclick="saveConfiguration()" class="btn-primary">Save Configuration</button>
-            <p class="setup-hint">Get these from: <a href="https://developers.google.com/sheets/api" target="_blank">Google Sheets API Setup Guide</a></p>
         </div>
     </div>
 
