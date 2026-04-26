@@ -60,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // Search input listener
 document.getElementById('searchInput').addEventListener('input', (e) => {
     const searchTerm = e.target.value.trim().toLowerCase();
-    if (searchTerm.length >= 2) {
+    if (searchTerm.length >= 1) {
         performSearch(searchTerm);
     } else {
         clearResults();
@@ -115,9 +115,11 @@ async function loadParticipantsData() {
 
 // Perform search
 function performSearch(searchTerm) {
-    const matches = participantsData.filter(p =>
-        p.lastName.toLowerCase().startsWith(searchTerm)
-    );
+    const matches = participantsData.filter(p => {
+        const firstName = (p.firstName || '').toLowerCase();
+        const lastName = (p.lastName || '').toLowerCase();
+        return firstName.startsWith(searchTerm) || lastName.startsWith(searchTerm);
+    });
 
     if (matches.length === 0) {
         document.getElementById('noResults').style.display = 'block';
@@ -261,7 +263,7 @@ async function checkInParticipant(participant) {
         
         // Re-render to show updated status
         const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
-        if (searchTerm.length >= 2) {
+        if (searchTerm.length >= 1) {
             performSearch(searchTerm);
         }
     } catch (error) {
@@ -295,7 +297,7 @@ async function checkInMultiple(members, checkboxStates, membersContainer) {
         Object.keys(checkboxStates).forEach(id => checkboxStates[id] = false);
 
         const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
-        if (searchTerm.length >= 2) {
+        if (searchTerm.length >= 1) {
             performSearch(searchTerm);
         }
     } catch (error) {
@@ -311,7 +313,7 @@ async function undoCheckIn(participant) {
         updateCheckInCount();
 
         const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
-        if (searchTerm.length >= 2) {
+        if (searchTerm.length >= 1) {
             performSearch(searchTerm);
         }
     } catch (error) {
